@@ -1,7 +1,9 @@
-name: Deploy Datespot to GitHub Pages
+name: Build & Deploy Datespot to GitHub Pages
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -10,58 +12,42 @@ permissions:
   pages: write
   id-token: write
 
+# One deploy at a time; a newer push cancels the older run
 concurrency:
-  group: github-pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Build website
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: pnpm
+          node-version: 24
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm install --no-audit --no-fund
 
-      - name: Set website base path
-        shell: bash
-        run: |
-          REPO_NAME="${GITHUB_REPOSITORY#*/}"
-          if [[ "$REPO_NAME" == *.github.io || -f public/CNAME ]]; then
-            echo "VITE_BASE_PATH=/" >> "$GITHUB_ENV"
-          else
-            echo "VITE_BASE_PATH=/$REPO_NAME/" >> "$GITHUB_ENV"
-          fi
+      - name: Build website
+        run: npm run build
 
-      - name: Build for GitHub Pages
-        run: pnpm run build
-
-      - name: Verify build output
-        run: test -f dist/index.html
-
-      - name: Configure GitHub Pages
+      # Pull requests only get a build check (no deploy)
+      - name: Setup GitHub Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
 
-      - name: Upload Pages artifact
+      - name: Upload website
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
 
   deploy:
-    name: Publish website
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:
