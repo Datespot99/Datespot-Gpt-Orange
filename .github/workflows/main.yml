@@ -1,9 +1,7 @@
-name: Build & Deploy Datespot to GitHub Pages
+name: Deploy Datespot Website
 
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -12,42 +10,53 @@ permissions:
   pages: write
   id-token: write
 
-# One deploy at a time; a newer push cancels the older run
 concurrency:
-  group: pages-${{ github.ref }}
+  group: github-pages
   cancel-in-progress: true
 
 jobs:
   build:
+    name: Build Datespot
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: '22'
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: pnpm install --no-frozen-lockfile
 
-      - name: Build website
-        run: npm run build
+      - name: Build website for datespot.in
+        env:
+          VITE_BASE_PATH: /
+        run: pnpm run build
 
-      # Pull requests only get a build check (no deploy)
-      - name: Setup GitHub Pages
-        if: github.event_name != 'pull_request'
+      - name: Verify build
+        run: test -f dist/index.html
+
+      - name: Set custom domain
+        run: echo 'datespot.in' > dist/CNAME
+
+      - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload website
-        if: github.event_name != 'pull_request'
+      - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
 
   deploy:
-    if: github.event_name != 'pull_request'
+    name: Publish Datespot
     needs: build
     runs-on: ubuntu-latest
     environment:
